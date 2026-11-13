@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.3 — 2026-11-13 (Fieldwatch fork)
+
+- Add an optional visible time-range selector: Today, Last 7 days, Last 30 days, All time.
+- Keep the selected range when switching feeders; label rolling periods accurately.
+- Group feeder/time controls with wrapping for narrow displays.
+
 ## v1.10.0 — 2026-10-22
 
 ### Removed

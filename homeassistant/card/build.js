@@ -234,7 +234,7 @@ const wrapper = `
 // you copied the artwork locally (homeassistant/install.sh layout).
 var HABIRD_CDN_ASSETS = 'https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@3f3e2e78aa6537a58a51df05ac4b34dcdb118733/avian/assets/';
 
-var HABIRD_VERSION = '1.10.2';
+var HABIRD_VERSION = '1.10.3';
 
 var HABIRD_EDITOR_SCHEMA = [
   { name: 'dashboard', type: 'expandable', flatten: true, title: 'Dashboard', expanded: true, schema: [
@@ -337,6 +337,7 @@ var HABIRD_EDITOR_SCHEMA = [
     { name: 'feeder', selector: { select: { options: ['both','woodland','kitchen'] } } },
     { name: 'feeder_entity', selector: { entity: { domain: 'input_select' } } },
     { name: 'feeder_selector', selector: { boolean: {} } },
+    { name: 'window_selector', selector: { boolean: {} } },
     { name: 'birdnet_url', selector: { text: {} } },
     { name: 'api_token', selector: { text: {} } },
     { name: '', type: 'grid', schema: [
@@ -354,6 +355,7 @@ var HABIRD_LABELS = {
   names: 'Species names',
   names_size: 'Species names size',
   view_selector: 'Show the view switcher',
+  window_selector: 'Show Fieldwatch time-range selector',
   selector_position: 'Switcher position',
   background: 'Background',
   font: 'Font',
@@ -597,6 +599,7 @@ class HABirdCard extends HTMLElement {
       feeder: c.feeder || 'both',
       feederEntity: c.feeder_entity,
       feederSelector: c.feeder_selector,
+      windowSelector: c.window_selector === true,
       fieldwatchCustomTitle: !!c.title,
       language: c.language || '',        // UI language override ('' = auto: hass -> browser)
       historyDays: c.history_days,

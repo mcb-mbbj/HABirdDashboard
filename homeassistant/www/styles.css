@@ -1799,3 +1799,14 @@ body.av-no-picker .name-strip, body.av-picker-top .name-strip { bottom: 18px; }
 }
 .rec-row .flag:disabled { cursor: default; }
 .rec-row.flagged .when, .rec-row.flagged .conf { text-decoration: line-through; opacity: 0.55; }
+
+/* Public visual-journal controls; wrap together on narrow displays. */
+#fieldwatchControls {
+  position: absolute; top: 12px; left: 16px; right: 16px; z-index: 20;
+  display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none;
+}
+#fieldwatchControls select {
+  pointer-events: auto; max-width: 100%; font: inherit;
+  border: 1px solid currentColor; border-radius: 6px; padding: 5px;
+  background: var(--paper, #faf8f2); color: inherit;
+}

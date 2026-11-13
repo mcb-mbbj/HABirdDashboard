@@ -9,6 +9,7 @@ data_source: fieldwatch
 fieldwatch_url: https://fieldwatch.mbbj.me/current.json
 feeder: both  # woodland, kitchen, or both
 window: today
+window_selector: true
 background: paper
 names: common
 poll_seconds: 60
@@ -24,7 +25,11 @@ woodblock illustrations. Clicking a species opens links to its Fieldwatch visits
 Optional `feeder_entity: input_select.fieldwatch_feeder` lets HA control the site
 (options Woodland, Kitchen, Both). `feeder_selector: false` hides the in-card site
 control; `view_selector: false` hides view navigation. Without a custom title,
-the title follows the selected feeder. These are foundations for a later static
+the title follows the selected feeder. `window_selector: true` adds Today, Last
+7 days, Last 30 days and All time beside the feeder selector. Today starts at
+midnight in the journal timezone; 7/30 days are rolling periods. Selection stays
+with this open card while changing feeders; reopening uses the configured
+`window` default. The selector is hidden unless enabled. These are foundations for a later static
 e-ink renderer, not an ESPHome image service yet.
 
 Only accepted live bird visits are exported. Counts describe visits, not unique

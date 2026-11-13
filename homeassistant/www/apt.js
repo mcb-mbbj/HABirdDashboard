@@ -2941,6 +2941,8 @@
     if (h <= 1) return tt('window.thisHour');
     if (h <= 12) return tt('window.past12h');
     if (h <= 24) return tt('window.past24h');
+    if (fwEnabled() && h === 168) return 'last 7 days';
+    if (fwEnabled() && h === 720) return 'last 30 days';
     if (h <= 168) return tt('window.thisWeek');
     return tt('window.allTime');
   }
@@ -3596,6 +3598,7 @@
     // never reverts to a different window.
     syncTodayWindow();
     var forHours = currentHours, forKey = windowKey();
+    var forSite = fwEnabled() ? fwSelection() : '';
     return Promise.all([
       fetchJson('./avian/api/birdnet-api.php?action=recent&hours=' + forHours),
       fetchJson('./avian/api/birdnet-api.php?action=activity&hours=' + forHours)
@@ -3604,7 +3607,7 @@
         ? vvRecent(forHours).catch(function () { return null; })
         : Promise.resolve(null),
     ]).then(function (parts) {
-        if (forKey !== windowKey()) return; // window changed mid-flight
+        if (forKey !== windowKey() || (fwEnabled() && forSite !== fwSelection())) return; // selection changed mid-flight
         DATA.recent = parts[0];
         DATA.activity = parts[1];
         DATA.visits = parts[2];
@@ -3675,10 +3678,14 @@
   // animate=true so the collage blooms in on first load. The live SSE
   // stream (below) only opens once this settles, so it never races the
   // very first render.
+  var fwControls;
+  if (fwEnabled() && (AV_CFG.feederSelector !== false || AV_CFG.windowSelector === true)) {
+    fwControls = document.createElement('div'); fwControls.id = 'fieldwatchControls';
+    document.body.appendChild(fwControls);
+  }
   if (fwEnabled() && AV_CFG.feederSelector !== false) {
     var fwPicker = document.createElement('select'); fwPicker.id = 'fieldwatchFeeder';
     fwPicker.setAttribute('aria-label','Feeder');
-    fwPicker.style.cssText = 'position:absolute;top:12px;left:16px;z-index:20;font:inherit;border:1px solid currentColor;border-radius:6px;padding:5px;background:var(--paper,#faf8f2);color:inherit';
     ['both','woodland','kitchen'].forEach(function (site) {
       var option=document.createElement('option'); option.value=site;
       option.textContent=site==='both'?'Both feeders':site.charAt(0).toUpperCase()+site.slice(1); fwPicker.appendChild(option);
@@ -3693,7 +3700,23 @@
         if (selected) h.callService('input_select','select_option',{entity_id:AV_CFG.feederEntity,option:selected});
       } else { fwSite=fwPicker.value; fwLoadedAt=0; refreshAll(); }
     });
-    document.body.appendChild(fwPicker);
+    fwControls.appendChild(fwPicker);
+  }
+  if (fwEnabled() && AV_CFG.windowSelector === true) {
+    var fwWindow = document.createElement('select'); fwWindow.id = 'fieldwatchWindow';
+    fwWindow.setAttribute('aria-label', 'Time range');
+    [['today','Today'],['168','Last 7 days'],['720','Last 30 days'],['1000000','All time']].forEach(function (item) {
+      var option = document.createElement('option'); option.value = item[0]; option.textContent = item[1]; fwWindow.appendChild(option);
+    });
+    fwWindow.value = windowToday ? 'today' : String(currentHours);
+    // A custom initial hour count outside this selector's choices falls back to today.
+    if (!fwWindow.value) { fwWindow.value = 'today'; windowToday = true; syncTodayWindow(); }
+    fwWindow.addEventListener('change', function () {
+      windowToday = fwWindow.value === 'today';
+      currentHours = windowToday ? currentHours : +fwWindow.value;
+      refreshRecent(true);
+    });
+    fwControls.appendChild(fwWindow);
   }
   refreshAll(true).then(function () { startLive(); });
 
