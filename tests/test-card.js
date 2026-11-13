@@ -66,7 +66,7 @@ setTimeout(() => {
     const tiles = [...root.querySelectorAll('.gtile img')];
     assert.strictEqual(tiles.length, 2, 'tiles: ' + tiles.length);
     const srcs = tiles.map(t => t.getAttribute('src'));
-    assert.ok(srcs.some(s => s.startsWith('https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@HABirdDashboard/avian/assets/illustrations/calypte-anna.png')), 'CDN perched: ' + srcs);
+    assert.ok(srcs.some(s => s.startsWith('https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@3f3e2e78aa6537a58a51df05ac4b34dcdb118733/avian/assets/illustrations/calypte-anna.png')), 'CDN perched: ' + srcs);
     assert.ok(srcs.some(s => s.includes('illustrations/corvus-corax-2.png')), 'flight pose: ' + srcs);
     // Atlas + stats live too.
     assert.ok(root.querySelectorAll('.bird-card').length === 2, 'atlas cards');
