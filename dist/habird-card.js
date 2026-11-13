@@ -5591,13 +5591,13 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
         +   '<h3>' + esc(s.com) + '</h3>'
         +   '<div class="sci">' + esc(s.sci) + '</div>'
         +   '<div class="spectro-wrap" aria-hidden="true"></div>'
-        +   '<div class="actions">'
+        +   (fwEnabled() ? '' : '<div class="actions">'
         +     (fetchJson.viaHa
                 ? '<button type="button" class="chip play" data-action="play" disabled title="' + esc(tt('audio.mqttOnly')) + '" aria-label="' + esc(tt('audio.mqttOnly')) + '">'
                 : '<button type="button" class="chip play" data-action="play" aria-label="play recording">')
         +       ICON_PLAY + '<span>play</span>'
         +     '</button>'
-        +   '</div>'
+        +   '</div>')
         + '</article>';
     }).join('');
     // Unchanged markup: leave the DOM (and its wired listeners) alone -
@@ -8348,7 +8348,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
 // you copied the artwork locally (homeassistant/install.sh layout).
 var HABIRD_CDN_ASSETS = 'https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@3f3e2e78aa6537a58a51df05ac4b34dcdb118733/avian/assets/';
 
-var HABIRD_VERSION = '1.10.1';
+var HABIRD_VERSION = '1.10.2';
 
 var HABIRD_EDITOR_SCHEMA = [
   { name: 'dashboard', type: 'expandable', flatten: true, title: 'Dashboard', expanded: true, schema: [

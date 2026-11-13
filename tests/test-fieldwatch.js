@@ -38,6 +38,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
  const blue=root.querySelector('.gtile[data-sci="Cyanistes caeruleus"]');
  assert(blue.title.includes('2 visits'),blue.title);
  assert(!blue.title.includes('calls'));
+ assert.equal(root.querySelectorAll('[data-action="play"]').length,0,'visual atlas has no audio controls');
  assert.equal(root.getElementById('staticTitle').textContent,'Woodland & Kitchen');
  const select=root.getElementById('fieldwatchFeeder');select.value='kitchen';select.dispatchEvent(new w.Event('change'));
  await wait(1100);

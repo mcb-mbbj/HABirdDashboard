@@ -3400,13 +3400,13 @@
         +   '<h3>' + esc(s.com) + '</h3>'
         +   '<div class="sci">' + esc(s.sci) + '</div>'
         +   '<div class="spectro-wrap" aria-hidden="true"></div>'
-        +   '<div class="actions">'
+        +   (fwEnabled() ? '' : '<div class="actions">'
         +     (fetchJson.viaHa
                 ? '<button type="button" class="chip play" data-action="play" disabled title="' + esc(tt('audio.mqttOnly')) + '" aria-label="' + esc(tt('audio.mqttOnly')) + '">'
                 : '<button type="button" class="chip play" data-action="play" aria-label="play recording">')
         +       ICON_PLAY + '<span>play</span>'
         +     '</button>'
-        +   '</div>'
+        +   '</div>')
         + '</article>';
     }).join('');
     // Unchanged markup: leave the DOM (and its wired listeners) alone -
