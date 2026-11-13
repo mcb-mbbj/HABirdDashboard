@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.5 — 2026-11-13 (Fieldwatch fork)
+
+- Add a calendar heatmap with automatic daily/weekly grouping and explicit Days/Weeks choices.
+- Show the selected period, date span and total visits above both heatmaps.
+- Reuse the journal timezone formatter when aggregating history.
+
 ## v1.10.4 — 2026-11-13 (Fieldwatch fork)
 
 - Make the Fieldwatch hourly heatmap follow the full selected range, including 30 days and retained history.

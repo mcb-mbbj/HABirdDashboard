@@ -674,7 +674,7 @@
   }
   .stats-hm-head, .stats-hm-row {
     display: grid;
-    grid-template-columns: var(--hm-name) repeat(24, minmax(22px, 1fr)) 48px;
+    grid-template-columns: var(--hm-name) repeat(var(--hm-cols, 24), minmax(22px, 1fr)) 48px;
     gap: 3px;
     padding: 1px 0;
   }
@@ -755,7 +755,7 @@
   @media (max-width: 700px) {
     .stats-hm { --hm-name: 104px; min-width: max-content; }
     .stats-hm-head, .stats-hm-row {
-      grid-template-columns: var(--hm-name) repeat(24, 26px) 40px;
+      grid-template-columns: var(--hm-name) repeat(var(--hm-cols, 24), 26px) 40px;
     }
   }
 
@@ -1810,3 +1810,16 @@ body.av-no-picker .name-strip, body.av-picker-top .name-strip { bottom: 18px; }
   border: 1px solid currentColor; border-radius: 6px; padding: 5px;
   background: var(--paper, #faf8f2); color: inherit;
 }
+
+/* The two visual-journal heatmaps share row order and period, with independent
+   horizontal scrolling so daily columns never widen the whole dashboard. */
+.fw-period-summary { margin: 0 0 20px; font: 13px/1.5 var(--av-font-mono); color: var(--ink); }
+.fw-heatmap-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 10px; }
+.fw-heatmap-heading h3 { margin: 0; font: 600 17px/1.3 var(--av-font-display); }
+.fw-heatmap-heading label { display: flex; gap: 8px; align-items: center; font: 12px var(--av-font-mono); }
+.fw-heatmap-heading select { font: inherit; color: inherit; background: var(--paper); border: 1px solid var(--ink-soft); border-radius: 5px; padding: 5px; }
+.fw-heatmap-scroll { overflow-x: auto; max-width: 100%; }
+.fw-calendar-section { margin-top: 32px; }
+.fw-calendar .stats-hm-head, .fw-calendar .stats-hm-row { grid-template-columns: var(--hm-name) repeat(var(--hm-cols), minmax(44px, 1fr)) 56px; }
+.fw-calendar .stats-hm-hr { display: flex; align-items: center; flex-direction: column; gap: 3px; letter-spacing: 0; text-transform: none; white-space: nowrap; padding: 4px 0; }
+.fw-heatmap-note { font: 11px/1.5 var(--av-font-mono); color: var(--ink-soft); margin: 10px 0 0; }

@@ -37,6 +37,11 @@ individuals. ALL means retained Fieldwatch history. The visual source uses the
 journal timezone and requires a publication less than five minutes old; overdue
 publication shows an unavailable message rather than a current-looking flock.
 Cached immutable pages are reused, with at most four concurrent data requests.
+The Stats view shows both hour-of-day and calendar heatmaps for the selected
+period. Calendar columns can be Auto, Days or Weeks; Auto groups spans longer
+than 35 dates into Monday-based weeks. Rolling ranges include partial boundary
+days/weeks, so both heatmaps retain the same totals. Blank cells mean zero
+recorded visits, which can also reflect downtime.
 
 Installation: add `mcb-mbbj/HABirdDashboard` as a custom HACS dashboard repository.
 Do not load the upstream and fork cards together: both register `habird-card`.

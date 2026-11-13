@@ -60,7 +60,7 @@
 
   // Fieldwatch publishes accepted visual visits independently of BirdNET.
   function fwEnabled() { return AV_CFG.dataSource === 'fieldwatch'; }
-  var fwTimezone = 'Europe/London';
+  var fwTimezone = 'Europe/London', fwDateFormatter, fwFormatterZone, fwBucketMode = 'auto';
   var fwSite = AV_CFG.feeder || 'both';
   var fwCache = new Map(), fwPending = null, fwLoadedAt = 0, fwLoadedSite = '';
   var fwStrings = {
@@ -1015,7 +1015,13 @@
   }
 
   function hhFmtTs(ms) {
-    if (fwEnabled()) return new Intl.DateTimeFormat('sv-SE', {timeZone:fwTimezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(ms));
+    if (fwEnabled()) {
+      if (!fwDateFormatter || fwFormatterZone !== fwTimezone) {
+        fwFormatterZone = fwTimezone;
+        fwDateFormatter = new Intl.DateTimeFormat('sv-SE', {timeZone:fwTimezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+      }
+      return fwDateFormatter.format(new Date(ms));
+    }
     var d = new Date(ms);
     var p = function (n) { return (n < 10 ? '0' : '') + n; };
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
@@ -1205,21 +1211,26 @@
   // Per-species hourly activity from the MQTT event stream - same shape
   // and 7-day cap as bgActivity.
   function hhActivity(hours) {
-    var winHours = fwEnabled() ? hours : Math.min(hours, 7 * 24);
-    var since = winHours >= 1000000 ? 0 : Date.now() - winHours * 3600000;
+    var visual = fwEnabled(), now = Date.now();
+    var winHours = visual ? hours : Math.min(hours, 7 * 24);
+    var since = winHours >= 1000000 ? 0 : now - winHours * 3600000;
     return hhEvents(hours <= 24 ? 'short' : 'long').then(function (ev) {
-      var by = {};
+      var by = {}, first = now;
       ev.forEach(function (e) {
         if (e.t < since) return;
+        first = Math.min(first, e.t);
         var r = by[e.sci];
-        if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, n: 0, byHour: new Array(24).fill(0) };
+        if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, n: 0, byHour: new Array(24).fill(0), byDate: {} };
         r.n++;
-        r.byHour[(fwEnabled() ? +hhFmtTs(e.t).slice(11,13) : new Date(e.t).getHours())]++;
+        var stamp = visual ? hhFmtTs(e.t) : '';
+        r.byHour[visual ? +stamp.slice(11,13) : new Date(e.t).getHours()]++;
+        if (visual) { var day = stamp.slice(0,10); r.byDate[day] = (r.byDate[day] || 0) + 1; }
         r.com = e.com;
       });
       var species = Object.keys(by).map(function (k) { return by[k]; });
-      species.sort(function (a, b) { return b.n - a.n; });
-      return { hours: hours, win_hours: winHours, species: species, as_of: new Date().toISOString() };
+      species.sort(function (a, b) { return b.n - a.n || a.sci.localeCompare(b.sci); });
+      return { hours: hours, win_hours: winHours, species: species, as_of: new Date(now).toISOString(),
+        calendar: visual ? {from: hhFmtTs(since || first).slice(0,10), to: hhFmtTs(now).slice(0,10), total: species.reduce(function (n,r) {return n+r.n;},0)} : null };
     });
   }
 
@@ -3117,6 +3128,49 @@
     (ll.species || []).forEach(function (s) { speciesTotals[s.sci] = +s.n; });
   }
 
+  // Calendar arithmetic uses UTC date labels, not elapsed local-day milliseconds,
+  // so DST changes cannot shift or skip a column. Actual events use fwTimezone.
+  function fwShiftDay(day, n) { return new Date(Date.parse(day+'T00:00:00Z') + n*86400000).toISOString().slice(0,10); }
+  function fwMonday(day) { var dow = new Date(day+'T00:00:00Z').getUTCDay(); return fwShiftDay(day, -((dow+6)%7)); }
+  function fwCalendarMarkup(act, species) {
+    var cal = act.calendar;
+    if (!cal) return '';
+    var dayCount = Math.round((Date.parse(cal.to)-Date.parse(cal.from))/86400000)+1;
+    var weekly = fwBucketMode === 'weeks' || (fwBucketMode === 'auto' && dayCount > 35);
+    var keys = [], key = weekly ? fwMonday(cal.from) : cal.from;
+    for (; key <= cal.to; key = fwShiftDay(key, weekly ? 7 : 1)) keys.push(key);
+    var values = species.map(function (row) {
+      var buckets = {};
+      Object.keys(row.byDate || {}).forEach(function (day) { var k = weekly ? fwMonday(day) : day; buckets[k] = (buckets[k] || 0) + row.byDate[day]; });
+      return keys.map(function (k) { return buckets[k] || 0; });
+    });
+    var max = Math.max(1, ...values.map(function (v) {return Math.max(1, ...v);}));
+    var dayLabel = new Intl.DateTimeFormat('en-GB', {timeZone:'UTC',day:'numeric',month:'short'});
+    var weekday = new Intl.DateTimeFormat('en-GB', {timeZone:'UTC',weekday:'short'});
+    var head = '<div class="stats-hm-head"><span class="stats-hm-name"></span>';
+    keys.forEach(function (k) {
+      var d = new Date(k+'T00:00:00Z');
+      head += '<span class="stats-hm-hr" title="'+esc(weekly ? 'Week beginning '+k : k)+'">'
+        + '<span>'+esc(weekly ? 'w/c' : weekday.format(d))+'</span><span>'+esc(dayLabel.format(d))+'</span></span>';
+    });
+    head += '<span class="stats-hm-tot">total</span></div>';
+    var rows = species.map(function (row, i) {
+      var cells = values[i].map(function (n,j) {
+        var shade = n ? Math.max(1,Math.min(5,Math.ceil(5*Math.log(1+n)/Math.log(1+max)))) : 0;
+        return '<span class="stats-hm-cell'+(shade ? ' l'+shade : '')+'" data-count="'+n+'" title="'+esc(row.com+' · '+(weekly?'week beginning ':'')+keys[j]+' · '+n+' visits')+'">'+(n?fmtN(n):'')+'</span>';
+      }).join('');
+      return '<div class="stats-hm-row" data-sci="'+esc(row.sci)+'"><span class="stats-hm-name"><span class="com">'+esc(row.com || row.sci)+'</span></span>'+cells+'<span class="stats-hm-tot">'+row.n.toLocaleString(BCP47)+'</span></div>';
+    }).join('');
+    var options = [['auto','Auto'],['days','Days'],['weeks','Weeks']].map(function (o) {
+      return '<option value="'+o[0]+'"'+(fwBucketMode===o[0]?' selected':'')+'>'+o[1]+'</option>';
+    }).join('');
+    return '<section class="fw-calendar-section"><div class="fw-heatmap-heading"><h3>'+(weekly?'Weekly':'Daily')+' visits</h3>'
+      +'<label>Columns <select id="fieldwatchBuckets" aria-label="Calendar heatmap columns">'+options+'</select></label></div>'
+      +'<div class="fw-heatmap-scroll"><div id="fieldwatchCalendar" class="stats-hm fw-calendar" style="--hm-cols:'+keys.length+'" data-bucket="'+(weekly?'weeks':'days')+'">'+head+rows+'</div></div>'
+      +'<p class="fw-heatmap-note">'+esc(cal.from+' to '+cal.to+' · '+fwTimezone)+'. '+(weekly?'Weeks start Monday. ':'')
+      +'First and last columns include only visits within the selected period. Blank cells mean zero recorded visits.</p></section>';
+  }
+
   // Activity heatmap (BirdNET-Go dashboard style): one row per species
   // (most-heard first), one cell per hour of day. A cell's tint deepens
   // with its detection count (5 log steps) and the number prints inside.
@@ -3174,7 +3228,7 @@
       return '<div class="stats-hm-row" data-sci="' + esc(s.sci) + '">'
         + '<span class="stats-hm-name"><span class="com">' + esc(s.com || s.sci) + '</span></span>'
         + cells
-        + '<span class="stats-hm-tot">' + fmtN(s.n) + '</span></div>';
+        + '<span class="stats-hm-tot">' + (fwEnabled() ? s.n.toLocaleString(BCP47) : fmtN(s.n)) + '</span></div>';
     }).join('');
 
     // Past the 7-day cap (the ALL window) the matrix only covers the
@@ -3184,9 +3238,16 @@
       : tt('stats.byHourCap', { window: windowLabel(currentHours) });
     if (trimmed) cap += ' · ' + tt('stats.heatmapTrim', { max: MAX_ROWS, total: act.species.length });
 
-    setHtml(tl,
-      '<div class="stats-hm">' + head + rows + '</div>'
-      + '<div class="stats-hm-cap">' + esc(cap) + '</div>');
+    var hourly = '<div class="stats-hm" id="fieldwatchHourly">' + head + rows + '</div>'
+      + '<div class="stats-hm-cap">' + esc(cap) + '</div>';
+    if (fwEnabled() && act.calendar) {
+      var summary = windowLabel(currentHours)+' · '+act.calendar.total.toLocaleString(BCP47)+' visits · '+act.calendar.from+' to '+act.calendar.to;
+      setHtml(tl, '<p id="fieldwatchPeriodSummary" class="fw-period-summary">'+esc(summary)+'</p>'
+        +'<section><div class="fw-heatmap-heading"><h3>Visits by hour of day</h3></div><div class="fw-heatmap-scroll">'+hourly+'</div></section>'
+        +fwCalendarMarkup(act, species));
+      var bucketPicker = document.getElementById('fieldwatchBuckets');
+      if (bucketPicker) bucketPicker.addEventListener('change', function () { fwBucketMode = bucketPicker.value; renderActivity(false); });
+    } else setHtml(tl, hourly);
     if (animate) playStatsEntrance();
   }
 
