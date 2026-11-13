@@ -1,3 +1,47 @@
+# Fieldwatch visual-feed fork
+
+This fork adds independent visual sightings from Fieldwatch. BirdNET and audio
+are optional and are not involved in the Fieldwatch data source.
+
+```yaml
+type: custom:habird-card
+data_source: fieldwatch
+fieldwatch_url: https://fieldwatch.mbbj.me/current.json
+feeder: both  # woodland, kitchen, or both
+window: today
+background: paper
+names: common
+poll_seconds: 60
+```
+
+The card reads compact immutable visit chunks from the authoritative public
+journal. Stable visit IDs deduplicate records; updated manifests replace old
+classifications and remove discarded visits. No visit history is copied into
+Home Assistant recorder. MQTT's small `Visual journal revision` entity triggers
+refreshes; polling also works without MQTT. Bird pictures are the upstream
+woodblock illustrations. Clicking a species opens links to its Fieldwatch visits.
+
+Optional `feeder_entity: input_select.fieldwatch_feeder` lets HA control the site
+(options Woodland, Kitchen, Both). `feeder_selector: false` hides the in-card site
+control; `view_selector: false` hides view navigation. Without a custom title,
+the title follows the selected feeder. These are foundations for a later static
+e-ink renderer, not an ESPHome image service yet.
+
+Only accepted live bird visits are exported. Counts describe visits, not unique
+individuals. ALL means retained Fieldwatch history. The visual source uses the
+journal timezone and requires a publication less than five minutes old; overdue
+publication shows an unavailable message rather than a current-looking flock.
+Cached immutable pages are reused, with at most four concurrent data requests.
+
+Installation: add `mcb-mbbj/HABirdDashboard` as a custom HACS dashboard repository.
+Do not load the upstream and fork cards together: both register `habird-card`.
+Build with `npm ci && npm run build`; validate with `npm test`.
+
+Upstream documentation follows. Its audio-only limitations apply to the upstream
+data sources, not `data_source: fieldwatch`.
+
+---
+
 # HABirdDashboard
 
 *Bird Card: a live bird collage for Home Assistant, fed by BirdNET-Go.*

@@ -232,9 +232,9 @@ const wrapper = `
 // actually heard are ever fetched (one PNG per species+pose, cached by
 // the browser). Point image_base at '/local/habird/assets/' instead if
 // you copied the artwork locally (homeassistant/install.sh layout).
-var HABIRD_CDN_ASSETS = 'https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@HABirdDashboard/avian/assets/';
+var HABIRD_CDN_ASSETS = 'https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@3f3e2e78aa6537a58a51df05ac4b34dcdb118733/avian/assets/';
 
-var HABIRD_VERSION = '1.10.0';
+var HABIRD_VERSION = '1.10.1';
 
 var HABIRD_EDITOR_SCHEMA = [
   { name: 'dashboard', type: 'expandable', flatten: true, title: 'Dashboard', expanded: true, schema: [
@@ -331,7 +331,12 @@ var HABIRD_EDITOR_SCHEMA = [
       { value: 'auto', label: 'Automatic' },
       { value: 'api', label: 'BirdNET-Go API only' },
       { value: 'ha', label: 'MQTT history only' },
+      { value: 'fieldwatch', label: 'Fieldwatch visual journal' },
     ] } } },
+    { name: 'fieldwatch_url', selector: { text: {} } },
+    { name: 'feeder', selector: { select: { options: ['both','woodland','kitchen'] } } },
+    { name: 'feeder_entity', selector: { entity: { domain: 'input_select' } } },
+    { name: 'feeder_selector', selector: { boolean: {} } },
     { name: 'birdnet_url', selector: { text: {} } },
     { name: 'api_token', selector: { text: {} } },
     { name: '', type: 'grid', schema: [
@@ -493,6 +498,10 @@ class HABirdCard extends HTMLElement {
     if (!hass || !hass.states || !this._refresh) return;
     if (!this._watchIds) {
       var ids = [];
+      if ((this._config || {}).data_source === 'fieldwatch') {
+        ids = Object.keys(hass.states).filter(function (id) { return /visual_journal_revision$/.test(id); });
+        if (this._config.feeder_entity) ids.push(this._config.feeder_entity);
+      }
       Object.keys(hass.states).forEach(function (id) {
         if (/_scientific_name$/.test(id)) {
           ids.push(id, id.replace(/_scientific_name$/, '_confidence'));
@@ -571,7 +580,7 @@ class HABirdCard extends HTMLElement {
     if ((c.background || 'transparent') === 'paper') shell.classList.add('av-bg-paper');
     var self = this;
     var avConfig = {
-      title: c.title || '',                  // '' = no title block
+      title: c.title || (c.data_source === 'fieldwatch' ? 'Fieldwatch' : ''),                  // '' = no title block
       // Species-name strip along the bottom of the collage (issue #69):
       // off (default) | common | scientific | both, and its font size in px.
       names: c.names || 'off',
@@ -584,6 +593,11 @@ class HABirdCard extends HTMLElement {
       apiToken: c.api_token || '',   // Bearer token for BirdNET-Go's "Private Mode"
       proxy: c.proxy,                // false = ignore the Bird Card Proxy integration
       dataSource: c.data_source || 'auto',
+      fieldwatchUrl: c.fieldwatch_url || 'https://fieldwatch.mbbj.me/current.json',
+      feeder: c.feeder || 'both',
+      feederEntity: c.feeder_entity,
+      feederSelector: c.feeder_selector,
+      fieldwatchCustomTitle: !!c.title,
       language: c.language || '',        // UI language override ('' = auto: hass -> browser)
       historyDays: c.history_days,
       haSensors: c.ha_sensors,   // YAML-only: explicit *_scientific_name entity ids
@@ -599,7 +613,7 @@ class HABirdCard extends HTMLElement {
       // the MQTT watcher above. On by default; the off switch is for old
       // BirdNET-Go builds or Private Mode installs, where the stream
       // 404s/401s on every boot and there's no point retrying it.
-      live: c.live !== false,
+      live: c.data_source !== 'fieldwatch' && c.live !== false,
       // How much of the card the flock fills (0.1-1.0, default 0.5). The
       // count curve in renderCollage nudges it per bird count.
       collageFill: (typeof c.collage_fill === 'number') ? c.collage_fill : 0.5,

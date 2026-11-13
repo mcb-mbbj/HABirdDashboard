@@ -1,0 +1,70 @@
+const assert=require('assert');
+const fs=require('fs');
+const {JSDOM}=require('jsdom');
+const dom=new JSDOM('<html><body></body></html>',{url:'http://ha.local:8123/lovelace/birds',runScripts:'outside-only',pretendToBeVisual:true});
+const w=dom.window, errors=[], requests=[];
+w.addEventListener('error',e=>errors.push(e.error?.stack||e.message));
+w.Audio=class {addEventListener(){}load(){}play(){return Promise.resolve();}pause(){}};
+w.ResizeObserver=class {observe(){}disconnect(){}};
+w.HTMLCanvasElement.prototype.getContext=()=>null;
+Object.defineProperty(w.HTMLElement.prototype,'clientWidth',{get(){return this.id==='collage'?1200:300;}});
+Object.defineProperty(w.HTMLElement.prototype,'clientHeight',{get(){return this.id==='collage'?800:100;}});
+const a='/objects/'+'a'.repeat(64)+'.json', b='/objects/'+'b'.repeat(64)+'.json', c='/objects/'+'c'.repeat(64)+'.json';
+let stale=false, revision=a;
+const now=Date.now()/1000;
+const event=(id,site,sci,com)=>({id,feeder_id:site,scientific_name:sci,common_name:com,observed_at:now-60});
+const data={
+ [a]:{version:1,source:'fieldwatch',pages:[{feeder_id:'woodland',url:b},{feeder_id:'kitchen',url:c}]},
+ [b]:[event('one','woodland','Cyanistes caeruleus','Blue tit'),event('two','woodland','Cyanistes caeruleus','Blue tit')],
+ [c]:[event('three','kitchen','Erithacus rubecula','European robin')]
+};
+w.fetch=async url=>{
+ requests.push(String(url));
+ const path=new URL(url,'https://fieldwatch.example').pathname;
+ if(path==='/current.json')return {ok:true,json:async()=>({visual_feed:revision,generated_at:now-(stale?600:0)})};
+ if(data[path])return {ok:true,json:async()=>data[path]};
+ throw Error('Unexpected request '+url);
+};
+w.eval(fs.readFileSync('dist/habird-card.js','utf8'));
+const card=w.document.createElement('habird-card');
+card.setConfig({data_source:'fieldwatch',fieldwatch_url:'https://fieldwatch.example/current.json',feeder:'both'});
+card.hass={states:{},themes:{darkMode:false},callApi(){throw Error('No HA history should be queried');}};
+w.document.body.appendChild(card);
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{
+ await wait(1200);
+ const root=card.shadowRoot;
+ assert.equal(root.querySelectorAll('.gtile').length,2,'visual-only birds join collage');
+ const blue=root.querySelector('.gtile[data-sci="Cyanistes caeruleus"]');
+ assert(blue.title.includes('2 visits'),blue.title);
+ assert(!blue.title.includes('calls'));
+ assert.equal(root.getElementById('staticTitle').textContent,'Woodland & Kitchen');
+ const select=root.getElementById('fieldwatchFeeder');select.value='kitchen';select.dispatchEvent(new w.Event('change'));
+ await wait(1100);
+ assert.equal(root.querySelectorAll('.gtile').length,1,'selection excludes other site');
+ assert.equal(root.getElementById('staticTitle').textContent,'Kitchen');
+ root.querySelector('.bird-card[data-sci="Erithacus rubecula"]').dispatchEvent(new w.MouseEvent('click',{bubbles:true,composed:true}));
+ await wait(1000);
+ assert(root.querySelector('#modalRecordings a[href="https://fieldwatch.example/share/three.html"]'),'visit detail link');
+ assert(!root.getElementById('modalRecordings').textContent.includes('%'),'no fake confidence');
+ assert(!requests.some(u=>u.includes(':8080')),'no BirdNET requests');
+ const correctedIndex='/objects/'+'d'.repeat(64)+'.json', correctedPage='/objects/'+'e'.repeat(64)+'.json';
+ data[correctedIndex]={version:1,source:'fieldwatch',pages:[{feeder_id:'kitchen',url:correctedPage}]};
+ data[correctedPage]=[event('three','kitchen','Parus major','Great tit'),event('three','kitchen','Parus major','Great tit')];
+ revision=correctedIndex;
+ card.setConfig({data_source:'fieldwatch',fieldwatch_url:'https://fieldwatch.example/current.json',feeder_entity:'input_select.feeder',feeder_selector:false});
+ card.hass={states:{'input_select.feeder':{state:'Kitchen',last_updated:'new'}},themes:{darkMode:false}};
+ await wait(1300);
+ assert.equal(card.shadowRoot.querySelectorAll('.gtile').length,1,'replacement index and duplicate ID');
+ assert(card.shadowRoot.querySelector('.gtile[data-sci="Parus major"]'),'correction replaces old species');
+ assert(!card.shadowRoot.querySelector('.gtile[data-sci="Erithacus rubecula"]'));
+ assert(!card.shadowRoot.getElementById('fieldwatchFeeder'),'control-free site selection');
+ stale=true;
+ card.setConfig({data_source:'fieldwatch',fieldwatch_url:'https://fieldwatch.example/current.json',feeder:'kitchen',feeder_selector:false});
+ await wait(1300);
+ assert.equal(card.shadowRoot.querySelectorAll('.gtile').length,0,'stale feed must not look current');
+ assert(card.shadowRoot.textContent.includes('unavailable or overdue'));
+ assert.deepEqual(errors,[]);
+ console.log('FIELDWATCH TEST PASSED: visual-only, repeat visits, feeder filter, title, visit links');
+ dom.window.close();
+})().catch(e=>{console.error(e);process.exit(1);});

@@ -2249,6 +2249,91 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
 
   var AV_CFG = __cardConfig || {};
 
+  // Fieldwatch publishes accepted visual visits independently of BirdNET.
+  function fwEnabled() { return AV_CFG.dataSource === 'fieldwatch'; }
+  var fwTimezone = 'Europe/London';
+  var fwSite = AV_CFG.feeder || 'both';
+  var fwCache = new Map(), fwPending = null, fwLoadedAt = 0, fwLoadedSite = '';
+  var fwStrings = {
+    'title.heardRecently': 'Seen Recently', 'names.aria': 'Species seen',
+    'unit.call': 'visit', 'unit.calls': 'visits',
+    'stats.topSpecCap': 'most-seen, {window}', 'atlas.mostHeard': 'most seen',
+    'stats.heatmapTrim': '{max} most-seen of {total}',
+    'atlas.newTitle': 'first retained sighting of this species here',
+    'modal.firstHeard': 'first seen', 'modal.recordings': 'Fieldwatch visits',
+    'modal.loadingRecordings': 'Loading visits...', 'modal.noRecordings': 'No visits.',
+    'modal.recordingsFailed': 'Could not load visits.',
+    'window.allTime': 'retained history', 'stats.allTime': 'retained history',
+    'atlas.allTime': 'retained history', 'modal.allTime': 'retained history',
+    'error.unreachable': 'Fieldwatch visual feed is unavailable or overdue.'
+  };
+  function fwSelection() {
+    var h = AV_CFG.__getHass && AV_CFG.__getHass();
+    var st = h && h.states && h.states[AV_CFG.feederEntity];
+    var site = String(st ? st.state : fwSite).toLowerCase();
+    return ['woodland','kitchen','both'].indexOf(site) >= 0 ? site : 'both';
+  }
+  function fwJson(url, immutable) {
+    if (immutable && fwCache.has(url)) return fwCache.get(url);
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 15000);
+    var promise = fetch(url, {cache: immutable ? 'default' : 'no-store', signal: controller.signal})
+      .then(function (r) { if (!r.ok) throw Error('Fieldwatch HTTP ' + r.status); return r.json(); })
+      .finally(function () { clearTimeout(timer); });
+    if (immutable) {
+      fwCache.set(url, promise);
+      promise.catch(function () { fwCache.delete(url); });
+    }
+    return promise;
+  }
+  function fwEvents() {
+    var site = fwSelection();
+    if (fwPending && fwLoadedSite === site && Date.now() - fwLoadedAt < 5000) return fwPending;
+    fwLoadedSite = site; fwLoadedAt = Date.now();
+    var base = new URL(AV_CFG.fieldwatchUrl || 'https://fieldwatch.mbbj.me/current.json', window.location.href);
+    if (!/^https?:$/.test(base.protocol)) return Promise.reject('Invalid Fieldwatch URL');
+    function objectUrl(path) {
+      if (!/^\/objects\/[a-f0-9]{64}\.json$/.test(path)) throw Error('Invalid visual object');
+      return new URL(path, base).href;
+    }
+    fwPending = fwJson(base.href, false).then(function (pointer) {
+      if (!Number.isFinite(pointer.generated_at) || Date.now()/1000-pointer.generated_at > 300 || pointer.generated_at-Date.now()/1000 > 60)
+        throw Error('Fieldwatch publisher overdue');
+      return fwJson(objectUrl(pointer.visual_feed), true);
+    }).then(function (index) {
+      if (index.version !== 1 || index.source !== 'fieldwatch' || !Array.isArray(index.pages) || index.pages.length > 2000)
+        throw Error('Unsupported visual feed');
+      fwTimezone = index.timezone || 'Europe/London';
+      var pages = index.pages.filter(function (p) { return site === 'both' || p.feeder_id === site; });
+      var keep = new Set(index.pages.map(function (p) { return objectUrl(p.url); }));
+      if (fwCache.size > keep.size + 5) fwCache.forEach(function (_, key) { if (!keep.has(key)) fwCache.delete(key); });
+      // Four concurrent requests; closed chunks are memoised across refreshes.
+      var next = 0, results = [];
+      function worker() {
+        var i = next++; if (i >= pages.length) return Promise.resolve();
+        return fwJson(objectUrl(pages[i].url), true).then(function (rows) {
+          if (!Array.isArray(rows) || rows.length > 500) throw Error('Invalid visual page');
+          results[i] = rows; return worker();
+        });
+      }
+      return Promise.all([worker(),worker(),worker(),worker()]).then(function () {
+        var seen = new Set(), events = [];
+        results.forEach(function (rows) { rows.forEach(function (r) {
+          if (!r || typeof r.id !== 'string' || seen.has(r.id) ||
+              !['woodland','kitchen'].includes(r.feeder_id) || (site !== 'both' && r.feeder_id !== site) ||
+              typeof r.scientific_name !== 'string' || typeof r.common_name !== 'string' ||
+              !Number.isFinite(r.observed_at) || r.observed_at > Date.now()/1000+60) return;
+          seen.add(r.id);
+          events.push({t:r.observed_at*1000,sci:r.scientific_name,com:r.common_name,conf:null,
+            site:r.feeder_id,id:r.id,url:new URL('/share/'+encodeURIComponent(r.id)+'.html',base).href});
+        }); });
+        return events.sort(function (a,b) { return a.t-b.t || a.id.localeCompare(b.id); });
+      });
+    });
+    fwPending.catch(function () { fwLoadedAt = 0; });
+    return fwPending;
+  }
+
   // ---- i18n runtime ----
   // Defined up front so it's available to every init-time and render-time
   // consumer below. Translation tables self-register into window.HABIRD_I18N
@@ -2305,6 +2390,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
     var table = I18N[LOCALE] || {};
     var en = I18N.en || {};
     var s = (key in table) ? table[key] : (en[key] != null ? en[key] : key);
+    if (fwEnabled() && fwStrings[key]) s = fwStrings[key];
     if (params) s = s.replace(/\{(\w+)\}/g, function (_, k) { return params[k] == null ? '' : params[k]; });
     return s;
   }
@@ -2591,6 +2677,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
     var windowStart = now.getTime() - hours * 3600000;
     var days = [bgDateStr(now)];
     var dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      if (fwEnabled()) dayStart = fwMidnight(now.getTime());
     if (windowStart < dayStart) days.push(bgDateStr(new Date(now.getTime() - 86400000)));
     return Promise.all(days.map(function (d) {
       // rows:null marks a FAILED fetch (vs an empty day) - if every day
@@ -3119,6 +3206,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
   }
 
   function hhFmtTs(ms) {
+    if (fwEnabled()) return new Intl.DateTimeFormat('sv-SE', {timeZone:fwTimezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(ms));
     var d = new Date(ms);
     var p = function (n) { return (n < 10 ? '0' : '') + n; };
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
@@ -3133,6 +3221,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
   // joined with the species names in force at that moment; species changes
   // the confidence stream missed count too.
   function hhEvents(kind) {
+    if (fwEnabled()) return fwEvents();
     var ttl = kind === 'short' ? 10000 : 240000;
     return haMemo('events:' + kind, ttl, function () {
       var sinceMs = kind === 'short'
@@ -3316,7 +3405,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
         var r = by[e.sci];
         if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, n: 0, byHour: new Array(24).fill(0) };
         r.n++;
-        r.byHour[new Date(e.t).getHours()]++;
+        r.byHour[(fwEnabled() ? +hhFmtTs(e.t).slice(11,13) : new Date(e.t).getHours())]++;
         r.com = e.com;
       });
       var species = Object.keys(by).map(function (k) { return by[k]; });
@@ -3375,7 +3464,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
         if (!d) d = byDate[key] = { date: key, detections: 0, _sp: {} };
         d.detections++;
         d._sp[e.sci] = 1;
-        byHour[new Date(e.t).getHours()]++;
+        byHour[(fwEnabled() ? +hhFmtTs(e.t).slice(11,13) : new Date(e.t).getHours())]++;
       });
       var daily = Object.keys(byDate).sort().map(function (k) {
         var d = byDate[k];
@@ -3398,7 +3487,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
         var ts = hhFmtTs(e.t);
         // file:'' - audio clips don't travel over MQTT; the modal's play
         // buttons no-op and the rows still show time + confidence.
-        return { d: ts.slice(0, 10), t: ts.slice(11), file: '', conf: e.conf };
+        return { d: ts.slice(0, 10), t: ts.slice(11), file: '', conf: e.conf, visit_url: e.url, src: e.site };
       });
       return {
         sci: sci,
@@ -3677,7 +3766,14 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
     var midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     return Math.max((now - midnight) / 3600000, 1 / 60);
   }
-  function syncTodayWindow() { if (windowToday) currentHours = hoursSinceMidnight(); }
+  function fwMidnight(now) {
+    var date = hhFmtTs(now).slice(0,10), target=Date.parse(date+'T00:00:00Z'), guess=target;
+    for (var i=0;i<3;i++) {
+      var local=Date.parse(hhFmtTs(guess).replace(' ','T')+'Z'); guess += target-local;
+    }
+    return guess;
+  }
+  function syncTodayWindow() { if (windowToday) currentHours = fwEnabled() ? Math.max(1/60,(Date.now()-fwMidnight(Date.now()))/3600000) : hoursSinceMidnight(); }
   // What a fetch was issued for: an in-flight response is dropped if the
   // window changed meanwhile. 'today' rather than its hour count, which
   // grows by the second.
@@ -5064,6 +5160,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
   // atlas say so instead of sitting blank (#73).
   var apiUnreachable = false;
   function apiErrorText() {
+    if (fwEnabled()) return apiUnreachable ? tt('error.unreachable') : '';
     if (apiPrivateMode) return tt('error.privateMode');
     if (!apiUnreachable) return '';
     // 'auto' tried HA history too: say when that found no sensors at all.
@@ -5117,6 +5214,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
         var mode = AV_CFG.dataSource || 'auto';
         var API_TIMEOUT_MS = 15000;
         var pick = function (apiRaw, ha) {
+          if (mode === 'fieldwatch') { fetchJson.viaHa = false; return ha(); }
           // A BirdNET-Go host that never answers (VPN without internal
           // DNS, a dropped LAN route) used to hang refreshAll() for a
           // minute or more with a blank card (#73). Give up after
@@ -5693,7 +5791,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
       fetchJson('./avian/api/birdnet-api.php?action=recent&hours=' + forHours),
       fetchJson('./avian/api/birdnet-api.php?action=activity&hours=' + forHours)
         .catch(function () { return null; }),
-      vvEnabled()
+      !fwEnabled() && vvEnabled()
         ? vvRecent(forHours).catch(function () { return null; })
         : Promise.resolve(null),
     ]).then(function (parts) {
@@ -5707,6 +5805,16 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
   }
   function refreshAll(animate) {
     syncTodayWindow();
+    var forSite = fwEnabled() ? fwSelection() : '';
+    if (fwEnabled()) {
+      if (!AV_CFG.fieldwatchCustomTitle) {
+        CUSTOM_TITLE = forSite === 'both' ? 'Woodland & Kitchen' : forSite.charAt(0).toUpperCase()+forSite.slice(1);
+        if (staticTitle) staticTitle.textContent = CUSTOM_TITLE;
+      }
+      var picker = __root.getElementById('fieldwatchFeeder');
+      if (picker) picker.value = forSite;
+      Object.keys(SPECIES_CACHE || {}).forEach(function (k) { delete SPECIES_CACHE[k]; });
+    }
     var forHours = currentHours, forKey = windowKey();
     // Only the primary summary/daily fetches (stats + lifelist) flip the
     // Private Mode message - a 401 from a secondary call (timeseries,
@@ -5731,9 +5839,11 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
         ? vvRecent(forHours).catch(function () { return null; })
         : Promise.resolve(null),
     ]).then(function (parts) {
+      if (fwEnabled() && forSite !== fwSelection()) return;
       apiPrivateMode = authFailed;
       apiUnreachable = !authFailed && primaryFailed === 2;
-      if (apiUnreachable) { try { console.warn('[bird-card] BirdNET-Go API unreachable'); } catch (e) {} }
+      if (fwEnabled() && apiUnreachable) { DATA.recent = {species:[]}; DATA.activity = {species:[]}; }
+      if (apiUnreachable) { try { console.warn(fwEnabled() ? '[bird-card] Fieldwatch visual feed unavailable' : '[bird-card] BirdNET-Go API unreachable'); } catch (e) {} }
       DATA.stats = parts[0];
       DATA.lifelist = parts[1];
       DATA.timeseries = parts[2];
@@ -5756,6 +5866,26 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
   // animate=true so the collage blooms in on first load. The live SSE
   // stream (below) only opens once this settles, so it never races the
   // very first render.
+  if (fwEnabled() && AV_CFG.feederSelector !== false) {
+    var fwPicker = document.createElement('select'); fwPicker.id = 'fieldwatchFeeder';
+    fwPicker.setAttribute('aria-label','Feeder');
+    fwPicker.style.cssText = 'position:absolute;top:12px;left:16px;z-index:20;font:inherit;border:1px solid currentColor;border-radius:6px;padding:5px;background:var(--paper,#faf8f2);color:inherit';
+    ['both','woodland','kitchen'].forEach(function (site) {
+      var option=document.createElement('option'); option.value=site;
+      option.textContent=site==='both'?'Both feeders':site.charAt(0).toUpperCase()+site.slice(1); fwPicker.appendChild(option);
+    });
+    fwPicker.value=fwSelection();
+    fwPicker.addEventListener('change',function () {
+      var h=AV_CFG.__getHass && AV_CFG.__getHass();
+      if (AV_CFG.feederEntity && h && h.callService) {
+        var entity=h.states[AV_CFG.feederEntity];
+        var opts=entity && entity.attributes && entity.attributes.options || [];
+        var selected=opts.find(function (v) {return v.toLowerCase()===fwPicker.value;});
+        if (selected) h.callService('input_select','select_option',{entity_id:AV_CFG.feederEntity,option:selected});
+      } else { fwSite=fwPicker.value; fwLoadedAt=0; refreshAll(); }
+    });
+    __shell.appendChild(fwPicker);
+  }
   refreshAll(true).then(function () { startLive(); });
 
   // Hook into the window picker so the data refetches on change. Pass
@@ -5853,6 +5983,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
   }
   var liveSigning = false;
   function startLive() {
+    if (fwEnabled()) return;
     if (!LIVE_ENABLED || liveGaveUp || liveSource || liveSigning || document.hidden) return;
     var ph = PROXY_MODE && proxyHass();
     if (PROXY_MODE) {
@@ -6795,7 +6926,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
               // API data source, absent over MQTT history. Sits just left
               // of the confidence; a ghost x that arms on first tap.
               + (d.file ? '<button class="flag" type="button" data-state="idle" title="' + esc(tt('flag.report')) + '" aria-label="' + esc(tt('flag.report')) + '">\u2715</button>' : '')
-              + '<span class="conf">' + ((+d.conf || 0) * 100).toFixed(0) + '%</span>'
+              + (fwEnabled() ? '<a class="conf" target="_blank" rel="noopener" href="' + esc(d.visit_url || '#') + '">' + esc(d.src || '') + ' · View visit</a>' : '<span class="conf">' + ((+d.conf || 0) * 100).toFixed(0) + '%</span>')
               + (d.file
               ? '<div class="rec-spectro" aria-hidden="true">'
               +   '<div class="rec-spectro-loading">' + esc(tt('spectro.loading')) + '</div>'
@@ -8215,9 +8346,9 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
 // actually heard are ever fetched (one PNG per species+pose, cached by
 // the browser). Point image_base at '/local/habird/assets/' instead if
 // you copied the artwork locally (homeassistant/install.sh layout).
-var HABIRD_CDN_ASSETS = 'https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@HABirdDashboard/avian/assets/';
+var HABIRD_CDN_ASSETS = 'https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@3f3e2e78aa6537a58a51df05ac4b34dcdb118733/avian/assets/';
 
-var HABIRD_VERSION = '1.10.0';
+var HABIRD_VERSION = '1.10.1';
 
 var HABIRD_EDITOR_SCHEMA = [
   { name: 'dashboard', type: 'expandable', flatten: true, title: 'Dashboard', expanded: true, schema: [
@@ -8314,7 +8445,12 @@ var HABIRD_EDITOR_SCHEMA = [
       { value: 'auto', label: 'Automatic' },
       { value: 'api', label: 'BirdNET-Go API only' },
       { value: 'ha', label: 'MQTT history only' },
+      { value: 'fieldwatch', label: 'Fieldwatch visual journal' },
     ] } } },
+    { name: 'fieldwatch_url', selector: { text: {} } },
+    { name: 'feeder', selector: { select: { options: ['both','woodland','kitchen'] } } },
+    { name: 'feeder_entity', selector: { entity: { domain: 'input_select' } } },
+    { name: 'feeder_selector', selector: { boolean: {} } },
     { name: 'birdnet_url', selector: { text: {} } },
     { name: 'api_token', selector: { text: {} } },
     { name: '', type: 'grid', schema: [
@@ -8476,6 +8612,10 @@ class HABirdCard extends HTMLElement {
     if (!hass || !hass.states || !this._refresh) return;
     if (!this._watchIds) {
       var ids = [];
+      if ((this._config || {}).data_source === 'fieldwatch') {
+        ids = Object.keys(hass.states).filter(function (id) { return /visual_journal_revision$/.test(id); });
+        if (this._config.feeder_entity) ids.push(this._config.feeder_entity);
+      }
       Object.keys(hass.states).forEach(function (id) {
         if (/_scientific_name$/.test(id)) {
           ids.push(id, id.replace(/_scientific_name$/, '_confidence'));
@@ -8554,7 +8694,7 @@ class HABirdCard extends HTMLElement {
     if ((c.background || 'transparent') === 'paper') shell.classList.add('av-bg-paper');
     var self = this;
     var avConfig = {
-      title: c.title || '',                  // '' = no title block
+      title: c.title || (c.data_source === 'fieldwatch' ? 'Fieldwatch' : ''),                  // '' = no title block
       // Species-name strip along the bottom of the collage (issue #69):
       // off (default) | common | scientific | both, and its font size in px.
       names: c.names || 'off',
@@ -8567,6 +8707,11 @@ class HABirdCard extends HTMLElement {
       apiToken: c.api_token || '',   // Bearer token for BirdNET-Go's "Private Mode"
       proxy: c.proxy,                // false = ignore the Bird Card Proxy integration
       dataSource: c.data_source || 'auto',
+      fieldwatchUrl: c.fieldwatch_url || 'https://fieldwatch.mbbj.me/current.json',
+      feeder: c.feeder || 'both',
+      feederEntity: c.feeder_entity,
+      feederSelector: c.feeder_selector,
+      fieldwatchCustomTitle: !!c.title,
       language: c.language || '',        // UI language override ('' = auto: hass -> browser)
       historyDays: c.history_days,
       haSensors: c.ha_sensors,   // YAML-only: explicit *_scientific_name entity ids
@@ -8582,7 +8727,7 @@ class HABirdCard extends HTMLElement {
       // the MQTT watcher above. On by default; the off switch is for old
       // BirdNET-Go builds or Private Mode installs, where the stream
       // 404s/401s on every boot and there's no point retrying it.
-      live: c.live !== false,
+      live: c.data_source !== 'fieldwatch' && c.live !== false,
       // How much of the card the flock fills (0.1-1.0, default 0.5). The
       // count curve in renderCollage nudges it per bird count.
       collageFill: (typeof c.collage_fill === 'number') ? c.collage_fill : 0.5,
