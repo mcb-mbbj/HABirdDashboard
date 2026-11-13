@@ -26,7 +26,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
  await wait(1200);let root=card.shadowRoot,select=root.getElementById('fieldwatchWindow');
  assert.deepEqual([...select.options].map(o=>o.textContent),['Today','Last 7 days','Last 30 days','All time']);
- function count(n,label){const tile=root.querySelector('.gtile[data-sci="Cyanistes caeruleus"]');assert(tile.title.includes(n+' visit'),tile.title);if(label)assert(tile.title.includes(label),tile.title);}
+ function count(n,label){const tile=root.querySelector('.gtile[data-sci="Cyanistes caeruleus"]');assert(tile.title.includes(n+' visit'),tile.title);if(label)assert(tile.title.includes(label),tile.title);assert.equal(root.querySelector('.stats-hm-row[data-sci="Cyanistes caeruleus"] .stats-hm-tot').textContent,String(n),'heatmap uses same range');}
  count(1,'today');
  for(const [range,n,label] of [['168',3,'last 7 days'],['720',5,'last 30 days'],['1000000',6,'retained history'],['today',1,'today']]){
   select.value=range;select.dispatchEvent(new w.Event('change'));await wait(650);count(n,label);

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.4 — 2026-11-13 (Fieldwatch fork)
+
+- Make the Fieldwatch hourly heatmap follow the full selected range, including 30 days and retained history.
+- Use the journal timezone for Today in atlas new-species badges and heatmap hour highlighting.
+
 ## v1.10.3 — 2026-11-13 (Fieldwatch fork)
 
 - Add an optional visible time-range selector: Today, Last 7 days, Last 30 days, All time.

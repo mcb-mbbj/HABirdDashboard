@@ -1205,8 +1205,8 @@
   // Per-species hourly activity from the MQTT event stream - same shape
   // and 7-day cap as bgActivity.
   function hhActivity(hours) {
-    var winHours = Math.min(hours, 7 * 24);
-    var since = Date.now() - winHours * 3600000;
+    var winHours = fwEnabled() ? hours : Math.min(hours, 7 * 24);
+    var since = winHours >= 1000000 ? 0 : Date.now() - winHours * 3600000;
     return hhEvents(hours <= 24 ? 'short' : 'long').then(function (ev) {
       var by = {};
       ev.forEach(function (e) {
@@ -3154,7 +3154,7 @@
     var inWin = new Array(24).fill(true);
     if (winHours < 24) {
       inWin.fill(false);
-      var nowH = new Date().getHours();
+      var nowH = fwEnabled() ? +hhFmtTs(Date.now()).slice(11,13) : new Date().getHours();
       for (var k = 0; k < Math.min(24, Math.ceil(winHours)); k++) {
         inWin[(nowH - k + 24) % 24] = true;
       }
@@ -3179,7 +3179,7 @@
 
     // Past the 7-day cap (the ALL window) the matrix only covers the
     // last week - say so instead of implying all time.
-    var cap = currentHours > 7 * 24
+    var cap = !fwEnabled() && currentHours > 7 * 24
       ? tt('stats.byHourDayCap')
       : tt('stats.byHourCap', { window: windowLabel(currentHours) });
     if (trimmed) cap += ' · ' + tt('stats.heatmapTrim', { max: MAX_ROWS, total: act.species.length });
@@ -3371,7 +3371,7 @@
     // to the life list this 1h / 12h / 24h / 7d. Never shown for the ALL
     // window (every species would qualify against an open-ended span).
     var now = Date.now();
-    var windowStartMs = now - (windowToday ? hoursSinceMidnight() : currentHours) * 3600000;
+    var windowStartMs = now - (windowToday && !fwEnabled() ? hoursSinceMidnight() : currentHours) * 3600000;
     var atlasHtml = species.map(function (s) {
       var total = +s.n || 0;
       var win = winBySci[s.sci] || 0;

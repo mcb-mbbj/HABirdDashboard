@@ -3396,8 +3396,8 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
   // Per-species hourly activity from the MQTT event stream - same shape
   // and 7-day cap as bgActivity.
   function hhActivity(hours) {
-    var winHours = Math.min(hours, 7 * 24);
-    var since = Date.now() - winHours * 3600000;
+    var winHours = fwEnabled() ? hours : Math.min(hours, 7 * 24);
+    var since = winHours >= 1000000 ? 0 : Date.now() - winHours * 3600000;
     return hhEvents(hours <= 24 ? 'short' : 'long').then(function (ev) {
       var by = {};
       ev.forEach(function (e) {
@@ -5345,7 +5345,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
     var inWin = new Array(24).fill(true);
     if (winHours < 24) {
       inWin.fill(false);
-      var nowH = new Date().getHours();
+      var nowH = fwEnabled() ? +hhFmtTs(Date.now()).slice(11,13) : new Date().getHours();
       for (var k = 0; k < Math.min(24, Math.ceil(winHours)); k++) {
         inWin[(nowH - k + 24) % 24] = true;
       }
@@ -5370,7 +5370,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
 
     // Past the 7-day cap (the ALL window) the matrix only covers the
     // last week - say so instead of implying all time.
-    var cap = currentHours > 7 * 24
+    var cap = !fwEnabled() && currentHours > 7 * 24
       ? tt('stats.byHourDayCap')
       : tt('stats.byHourCap', { window: windowLabel(currentHours) });
     if (trimmed) cap += ' · ' + tt('stats.heatmapTrim', { max: MAX_ROWS, total: act.species.length });
@@ -5562,7 +5562,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
     // to the life list this 1h / 12h / 24h / 7d. Never shown for the ALL
     // window (every species would qualify against an open-ended span).
     var now = Date.now();
-    var windowStartMs = now - (windowToday ? hoursSinceMidnight() : currentHours) * 3600000;
+    var windowStartMs = now - (windowToday && !fwEnabled() ? hoursSinceMidnight() : currentHours) * 3600000;
     var atlasHtml = species.map(function (s) {
       var total = +s.n || 0;
       var win = winBySci[s.sci] || 0;
@@ -8371,7 +8371,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
 // you copied the artwork locally (homeassistant/install.sh layout).
 var HABIRD_CDN_ASSETS = 'https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@3f3e2e78aa6537a58a51df05ac4b34dcdb118733/avian/assets/';
 
-var HABIRD_VERSION = '1.10.3';
+var HABIRD_VERSION = '1.10.4';
 
 var HABIRD_EDITOR_SCHEMA = [
   { name: 'dashboard', type: 'expandable', flatten: true, title: 'Dashboard', expanded: true, schema: [
