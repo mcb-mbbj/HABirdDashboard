@@ -234,7 +234,7 @@ const wrapper = `
 // you copied the artwork locally (homeassistant/install.sh layout).
 var HABIRD_CDN_ASSETS = 'https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@3f3e2e78aa6537a58a51df05ac4b34dcdb118733/avian/assets/';
 
-var HABIRD_VERSION = '1.10.5';
+var HABIRD_VERSION = '1.10.6';
 
 var HABIRD_EDITOR_SCHEMA = [
   { name: 'dashboard', type: 'expandable', flatten: true, title: 'Dashboard', expanded: true, schema: [
@@ -338,6 +338,9 @@ var HABIRD_EDITOR_SCHEMA = [
     { name: 'feeder_entity', selector: { entity: { domain: 'input_select' } } },
     { name: 'feeder_selector', selector: { boolean: {} } },
     { name: 'window_selector', selector: { boolean: {} } },
+    { name: 'confidence', selector: { select: { mode: 'dropdown', options: [{value:'strict',label:'Very high confidence'},{value:'high',label:'Include high-confidence candidates'},{value:'medium',label:'Include medium-confidence candidates — may be wrong'}] } } },
+    { name: 'confidence_entity', selector: { entity: { domain: 'input_select' } } },
+    { name: 'confidence_selector', selector: { boolean: {} } },
     { name: 'birdnet_url', selector: { text: {} } },
     { name: 'api_token', selector: { text: {} } },
     { name: '', type: 'grid', schema: [
@@ -356,6 +359,9 @@ var HABIRD_LABELS = {
   names_size: 'Species names size',
   view_selector: 'Show the view switcher',
   window_selector: 'Show Fieldwatch time-range selector',
+  confidence: 'Fieldwatch identification confidence',
+  confidence_entity: 'Optional shared confidence helper',
+  confidence_selector: 'Show Fieldwatch confidence selector',
   selector_position: 'Switcher position',
   background: 'Background',
   font: 'Font',
@@ -503,6 +509,7 @@ class HABirdCard extends HTMLElement {
       if ((this._config || {}).data_source === 'fieldwatch') {
         ids = Object.keys(hass.states).filter(function (id) { return /visual_journal_revision$/.test(id); });
         if (this._config.feeder_entity) ids.push(this._config.feeder_entity);
+        if (this._config.confidence_entity) ids.push(this._config.confidence_entity);
       }
       Object.keys(hass.states).forEach(function (id) {
         if (/_scientific_name$/.test(id)) {
@@ -600,6 +607,9 @@ class HABirdCard extends HTMLElement {
       feederEntity: c.feeder_entity,
       feederSelector: c.feeder_selector,
       windowSelector: c.window_selector === true,
+      confidence: c.confidence || 'strict',
+      confidenceEntity: c.confidence_entity,
+      confidenceSelector: c.confidence_selector === true,
       fieldwatchCustomTitle: !!c.title,
       language: c.language || '',        // UI language override ('' = auto: hass -> browser)
       historyDays: c.history_days,

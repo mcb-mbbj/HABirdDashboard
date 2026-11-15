@@ -1823,3 +1823,6 @@ body.av-no-picker .name-strip, body.av-picker-top .name-strip { bottom: 18px; }
 .fw-calendar .stats-hm-head, .fw-calendar .stats-hm-row { grid-template-columns: var(--hm-name) repeat(var(--hm-cols), minmax(44px, 1fr)) 56px; }
 .fw-calendar .stats-hm-hr { display: flex; align-items: center; flex-direction: column; gap: 3px; letter-spacing: 0; text-transform: none; white-space: nowrap; padding: 4px 0; }
 .fw-heatmap-note { font: 11px/1.5 var(--av-font-mono); color: var(--ink-soft); margin: 10px 0 0; }
+
+#fieldwatchControls select { max-width: 100%; }
+#fieldwatchConfidenceNote { flex-basis:100%; font-size:12px; max-width:600px; }

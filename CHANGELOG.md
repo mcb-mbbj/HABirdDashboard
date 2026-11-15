@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.10.6 — 2026-11-15 (Fieldwatch fork)
+
+- Add cumulative confidence selection to the card editor and optional in-card dropdown, with optional HA input_select binding.
+- Read authoritative strict/high/medium visual manifests and label candidate visit links.
+- Keep species counts, artwork and both heatmaps consistent when changing confidence or feeder; reject stale selection responses.
+- Match seven-day journal counts using local calendar dates; thirty days follows the same rule.
+- Preserve strict defaults and show unavailable when a selected confidence feed is missing.
+
 ## v1.10.5 — 2026-11-13 (Fieldwatch fork)
 
 - Add a calendar heatmap with automatic daily/weekly grouping and explicit Days/Weeks choices.

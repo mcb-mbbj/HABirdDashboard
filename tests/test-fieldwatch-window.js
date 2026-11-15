@@ -43,10 +43,10 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
  for(const [range,n,label] of [['168',3,'last 7 days'],['720',7,'last 30 days'],['1000000',9,'retained history'],['today',1,'today']]){
   select.value=range;select.dispatchEvent(new w.Event('change'));await wait(650);count(n,label);
   assert.equal(root.getElementById('fieldwatchCalendar').dataset.bucket,range==='1000000'?'weeks':'days','automatic granularity');
-  if(range==='168')assert.equal(root.querySelectorAll('#fieldwatchCalendar .stats-hm-hr').length,8,'rolling week has partial first and last dates');
+  if(range==='168')assert.equal(root.querySelectorAll('#fieldwatchCalendar .stats-hm-hr').length,7,'week matches seven journal dates');
   if(range==='720'){
    const heads=[...root.querySelectorAll('#fieldwatchCalendar .stats-hm-hr')];
-   assert.equal(heads.length,31,'rolling month includes boundary dates');
+   assert.equal(heads.length,30,'month uses thirty local dates');
    const dst=heads.findIndex(h=>h.title==='2026-10-25');assert(dst>=0);
    assert.equal(root.querySelectorAll('#fieldwatchCalendar .stats-hm-cell')[dst].textContent,'2','both repeated-clock instants stay in same local date');
    assert.equal(root.querySelectorAll('#fieldwatchHourly .stats-hm-cell')[1].textContent,'2','both repeated-clock instants stay in same local hour');

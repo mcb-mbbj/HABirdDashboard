@@ -61,7 +61,15 @@
   // Fieldwatch publishes accepted visual visits independently of BirdNET.
   function fwEnabled() { return AV_CFG.dataSource === 'fieldwatch'; }
   var fwTimezone = 'Europe/London', fwDateFormatter, fwFormatterZone, fwBucketMode = 'auto';
-  var fwSite = AV_CFG.feeder || 'both';
+  var fwSite = AV_CFG.feeder || 'both', fwLevel = AV_CFG.confidence || 'strict';
+  var fwLevels = ['strict','high','medium'];
+  var fwLabels = {strict:'Very high confidence',high:'Include high-confidence candidates',medium:'Include medium-confidence candidates — may be wrong'};
+  function fwConfidence() {
+    var h=AV_CFG.__getHass && AV_CFG.__getHass(), st=h && h.states && h.states[AV_CFG.confidenceEntity];
+    var value=st ? st.state : fwLevel;
+    return fwLevels.find(function (k) {return value===k || value===fwLabels[k];}) || 'strict';
+  }
+  function fwSelectionKey() {return fwSelection()+'|'+fwConfidence();}
   var fwCache = new Map(), fwPending = null, fwLoadedAt = 0, fwLoadedSite = '';
   var fwStrings = {
     'title.heardRecently': 'Seen Recently', 'names.aria': 'Species seen',
@@ -96,9 +104,9 @@
     return promise;
   }
   function fwEvents() {
-    var site = fwSelection();
-    if (fwPending && fwLoadedSite === site && Date.now() - fwLoadedAt < 5000) return fwPending;
-    fwLoadedSite = site; fwLoadedAt = Date.now();
+    var site = fwSelection(), level=fwConfidence(), key=fwSelectionKey();
+    if (fwPending && fwLoadedSite === key && Date.now() - fwLoadedAt < 5000) return fwPending;
+    fwLoadedSite = key; fwLoadedAt = Date.now();
     var base = new URL(AV_CFG.fieldwatchUrl || 'https://fieldwatch.mbbj.me/current.json', window.location.href);
     if (!/^https?:$/.test(base.protocol)) return Promise.reject('Invalid Fieldwatch URL');
     function objectUrl(path) {
@@ -108,7 +116,9 @@
     fwPending = fwJson(base.href, false).then(function (pointer) {
       if (!Number.isFinite(pointer.generated_at) || Date.now()/1000-pointer.generated_at > 300 || pointer.generated_at-Date.now()/1000 > 60)
         throw Error('Fieldwatch publisher overdue');
-      return fwJson(objectUrl(pointer.visual_feed), true);
+      var reference=level==='strict' ? pointer.visual_feed : pointer.visual_feeds && pointer.visual_feeds[level];
+      if (!reference) throw Error('Selected confidence feed is unavailable');
+      return fwJson(objectUrl(reference), true);
     }).then(function (index) {
       if (index.version !== 1 || index.source !== 'fieldwatch' || !Array.isArray(index.pages) || index.pages.length > 2000)
         throw Error('Unsupported visual feed');
@@ -132,9 +142,11 @@
               !['woodland','kitchen'].includes(r.feeder_id) || (site !== 'both' && r.feeder_id !== site) ||
               typeof r.scientific_name !== 'string' || typeof r.common_name !== 'string' ||
               !Number.isFinite(r.observed_at) || r.observed_at > Date.now()/1000+60) return;
+          var tier=r.confidence_tier || 'strict';
+          if (fwLevels.indexOf(tier)<0 || fwLevels.indexOf(tier)>fwLevels.indexOf(level)) throw Error('Unexpected confidence tier');
           seen.add(r.id);
           events.push({t:r.observed_at*1000,sci:r.scientific_name,com:r.common_name,conf:null,
-            site:r.feeder_id,id:r.id,url:new URL('/share/'+encodeURIComponent(r.id)+'.html',base).href});
+            site:r.feeder_id,tier:tier,id:r.id,url:new URL('/share/'+encodeURIComponent(r.id)+'.html',base).href});
         }); });
         return events.sort(function (a,b) { return a.t-b.t || a.id.localeCompare(b.id); });
       });
@@ -1166,7 +1178,7 @@
   // common name so a camera stream that publishes only one of the two
   // still joins onto the audio species rows.
   function vvRecent(hours) {
-    var since = hours >= 1000000 ? 0 : Date.now() - hours * 3600000;
+    var since = fwEnabled() ? fwSince(hours,Date.now()) : hours >= 1000000 ? 0 : Date.now() - hours * 3600000;
     return vvEvents(hours <= 24 ? 'short' : 'long').then(function (ev) {
       var by = {};
       hhAgg(ev, since).forEach(function (r) {
@@ -1200,7 +1212,7 @@
 
   function hhRecent(hours) {
     var kind = hours <= 24 ? 'short' : 'long';
-    var since = hours >= 1000000 ? 0 : Date.now() - hours * 3600000;
+    var since = fwEnabled() ? fwSince(hours,Date.now()) : hours >= 1000000 ? 0 : Date.now() - hours * 3600000;
     return hhEvents(kind).then(function (ev) {
       var species = hhAgg(ev, since);
       species.sort(function (a, b) { return (b.last_seen || '').localeCompare(a.last_seen || ''); });
@@ -1213,7 +1225,7 @@
   function hhActivity(hours) {
     var visual = fwEnabled(), now = Date.now();
     var winHours = visual ? hours : Math.min(hours, 7 * 24);
-    var since = winHours >= 1000000 ? 0 : now - winHours * 3600000;
+    var since = visual ? fwSince(winHours,now) : winHours >= 1000000 ? 0 : now - winHours * 3600000;
     return hhEvents(hours <= 24 ? 'short' : 'long').then(function (ev) {
       var by = {}, first = now;
       ev.forEach(function (e) {
@@ -1262,7 +1274,8 @@
         ev.forEach(function (e) { if (e.t >= since) { n++; sp[e.sci] = 1; } });
         return { detections: n, species: Object.keys(sp).length };
       }
-      var all = tally(0), today = tally(dayStart), week = tally(now.getTime() - 7 * 86400000);
+      if (fwEnabled()) dayStart=fwMidnight(now.getTime());
+      var all = tally(0), today = tally(dayStart), week = tally(fwEnabled() ? fwSince(168,now.getTime()) : now.getTime() - 7 * 86400000);
       return {
         totals: all,
         today: today,
@@ -1307,7 +1320,7 @@
         var ts = hhFmtTs(e.t);
         // file:'' - audio clips don't travel over MQTT; the modal's play
         // buttons no-op and the rows still show time + confidence.
-        return { d: ts.slice(0, 10), t: ts.slice(11), file: '', conf: e.conf, visit_url: e.url, src: e.site };
+        return { d: ts.slice(0, 10), t: ts.slice(11), file: '', conf: e.conf, visit_url: e.url, src: e.site + (e.tier && e.tier!=='strict' ? ' · '+e.tier+' candidate' : '') };
       });
       return {
         sci: sci,
@@ -1586,12 +1599,18 @@
     var midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     return Math.max((now - midnight) / 3600000, 1 / 60);
   }
-  function fwMidnight(now) {
-    var date = hhFmtTs(now).slice(0,10), target=Date.parse(date+'T00:00:00Z'), guess=target;
+  function fwMidnight(now, daysBack) {
+    var date = hhFmtTs(now).slice(0,10), target=Date.parse(date+'T00:00:00Z')-(daysBack || 0)*86400000, guess=target;
     for (var i=0;i<3;i++) {
       var local=Date.parse(hhFmtTs(guess).replace(' ','T')+'Z'); guess += target-local;
     }
     return guess;
+  }
+  function fwSince(hours, now) {
+    if (hours >= 1000000) return 0;
+    if (windowToday && hours===currentHours) return fwMidnight(now);
+    if (hours===168 || hours===720) return fwMidnight(now,hours/24-1);
+    return now-hours*3600000;
   }
   function syncTodayWindow() { if (windowToday) currentHours = fwEnabled() ? Math.max(1/60,(Date.now()-fwMidnight(Date.now()))/3600000) : hoursSinceMidnight(); }
   // What a fetch was issued for: an in-flight response is dropped if the
@@ -3432,7 +3451,7 @@
     // to the life list this 1h / 12h / 24h / 7d. Never shown for the ALL
     // window (every species would qualify against an open-ended span).
     var now = Date.now();
-    var windowStartMs = now - (windowToday && !fwEnabled() ? hoursSinceMidnight() : currentHours) * 3600000;
+    var windowStartMs = fwEnabled() ? fwSince(currentHours,now) : now - (windowToday ? hoursSinceMidnight() : currentHours) * 3600000;
     var atlasHtml = species.map(function (s) {
       var total = +s.n || 0;
       var win = winBySci[s.sci] || 0;
@@ -3659,7 +3678,7 @@
     // never reverts to a different window.
     syncTodayWindow();
     var forHours = currentHours, forKey = windowKey();
-    var forSite = fwEnabled() ? fwSelection() : '';
+    var forSite = fwEnabled() ? fwSelection() : '', forSelection = fwEnabled() ? fwSelectionKey() : '';
     return Promise.all([
       fetchJson('./avian/api/birdnet-api.php?action=recent&hours=' + forHours),
       fetchJson('./avian/api/birdnet-api.php?action=activity&hours=' + forHours)
@@ -3668,7 +3687,7 @@
         ? vvRecent(forHours).catch(function () { return null; })
         : Promise.resolve(null),
     ]).then(function (parts) {
-        if (forKey !== windowKey() || (fwEnabled() && forSite !== fwSelection())) return; // selection changed mid-flight
+        if (forKey !== windowKey() || (fwEnabled() && forSelection !== fwSelectionKey())) return; // selection changed mid-flight
         DATA.recent = parts[0];
         DATA.activity = parts[1];
         DATA.visits = parts[2];
@@ -3678,7 +3697,7 @@
   }
   function refreshAll(animate) {
     syncTodayWindow();
-    var forSite = fwEnabled() ? fwSelection() : '';
+    var forSite = fwEnabled() ? fwSelection() : '', forSelection = fwEnabled() ? fwSelectionKey() : '';
     if (fwEnabled()) {
       if (!AV_CFG.fieldwatchCustomTitle) {
         CUSTOM_TITLE = forSite === 'both' ? 'Woodland & Kitchen' : forSite.charAt(0).toUpperCase()+forSite.slice(1);
@@ -3686,6 +3705,10 @@
       }
       var picker = document.getElementById('fieldwatchFeeder');
       if (picker) picker.value = forSite;
+      var confidencePicker=document.getElementById('fieldwatchConfidence');
+      if(confidencePicker)confidencePicker.value=fwConfidence();
+      var note=document.getElementById('fieldwatchConfidenceNote');
+      if(note){note.textContent=fwConfidence()==='strict' ? '' : fwLabels[fwConfidence()]+'. Counts include these candidates.';note.hidden=fwConfidence()==='strict';}
       Object.keys(SPECIES_CACHE || {}).forEach(function (k) { delete SPECIES_CACHE[k]; });
     }
     var forHours = currentHours, forKey = windowKey();
@@ -3712,7 +3735,7 @@
         ? vvRecent(forHours).catch(function () { return null; })
         : Promise.resolve(null),
     ]).then(function (parts) {
-      if (fwEnabled() && forSite !== fwSelection()) return;
+      if (fwEnabled() && forSelection !== fwSelectionKey()) return;
       apiPrivateMode = authFailed;
       apiUnreachable = !authFailed && primaryFailed === 2;
       if (fwEnabled() && apiUnreachable) { DATA.recent = {species:[]}; DATA.activity = {species:[]}; }
@@ -3740,7 +3763,7 @@
   // stream (below) only opens once this settles, so it never races the
   // very first render.
   var fwControls;
-  if (fwEnabled() && (AV_CFG.feederSelector !== false || AV_CFG.windowSelector === true)) {
+  if (fwEnabled() && (AV_CFG.feederSelector !== false || AV_CFG.windowSelector === true || AV_CFG.confidenceSelector === true || fwConfidence() !== 'strict')) {
     fwControls = document.createElement('div'); fwControls.id = 'fieldwatchControls';
     document.body.appendChild(fwControls);
   }
@@ -3779,6 +3802,22 @@
     });
     fwControls.appendChild(fwWindow);
   }
+  if (fwEnabled() && AV_CFG.confidenceSelector === true) {
+    var fwConfidencePicker=document.createElement('select');fwConfidencePicker.id='fieldwatchConfidence';
+    fwConfidencePicker.setAttribute('aria-label','Identification confidence');
+    fwLevels.forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=fwLabels[k];fwConfidencePicker.appendChild(o);});
+    fwConfidencePicker.value=fwConfidence();
+    fwConfidencePicker.addEventListener('change',function(){
+      var h=AV_CFG.__getHass && AV_CFG.__getHass();
+      if(AV_CFG.confidenceEntity && h && h.callService){
+        var st=h.states[AV_CFG.confidenceEntity], options=st && st.attributes && st.attributes.options || [];
+        var chosen=options.find(function(v){return v===fwConfidencePicker.value || v===fwLabels[fwConfidencePicker.value];});
+        if(chosen)h.callService('input_select','select_option',{entity_id:AV_CFG.confidenceEntity,option:chosen});
+      }else{fwLevel=fwConfidencePicker.value;fwLoadedAt=0;refreshAll();}
+    });
+    fwControls.appendChild(fwConfidencePicker);
+  }
+  if(fwControls){var note=document.createElement('small');note.id='fieldwatchConfidenceNote';note.hidden=true;fwControls.appendChild(note);}
   refreshAll(true).then(function () { startLive(); });
 
   // Hook into the window picker so the data refetches on change. Pass

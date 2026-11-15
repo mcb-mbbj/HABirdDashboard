@@ -10,6 +10,8 @@ fieldwatch_url: https://fieldwatch.mbbj.me/current.json
 feeder: both  # woodland, kitchen, or both
 window: today
 window_selector: true
+confidence: strict  # strict, high, medium (cumulative)
+confidence_selector: true
 background: paper
 names: common
 poll_seconds: 60
@@ -27,20 +29,25 @@ Optional `feeder_entity: input_select.fieldwatch_feeder` lets HA control the sit
 control; `view_selector: false` hides view navigation. Without a custom title,
 the title follows the selected feeder. `window_selector: true` adds Today, Last
 7 days, Last 30 days and All time beside the feeder selector. Today starts at
-midnight in the journal timezone; 7/30 days are rolling periods. Selection stays
+midnight in the journal timezone; 7/30 days include today and the preceding
+6/29 local dates, matching the journal’s calendar-day rules. Selection stays
 with this open card while changing feeders; reopening uses the configured
-`window` default. The selector is hidden unless enabled. These are foundations for a later static
-e-ink renderer, not an ESPHome image service yet.
+`window` default. The selector is hidden unless enabled. The separate e-paper renderer uses the same feed and calendar rules.
 
-Only accepted live bird visits are exported. Counts describe visits, not unique
+The default includes accepted live bird visits only. Set `confidence: high` or
+`confidence: medium` to include the journal’s guarded, explicitly labelled
+candidates. `confidence_selector: true` adds a visible dropdown; the card editor
+also exposes the starting level. Optional `confidence_entity` binds an HA
+input_select using strict/high/medium or the displayed option labels. Missing
+candidate feeds show unavailable rather than silently falling back to strict.
+Numeric MQTT statistics are unaffected. Counts describe visits, not unique
 individuals. ALL means retained Fieldwatch history. The visual source uses the
 journal timezone and requires a publication less than five minutes old; overdue
 publication shows an unavailable message rather than a current-looking flock.
 Cached immutable pages are reused, with at most four concurrent data requests.
 The Stats view shows both hour-of-day and calendar heatmaps for the selected
 period. Calendar columns can be Auto, Days or Weeks; Auto groups spans longer
-than 35 dates into Monday-based weeks. Rolling ranges include partial boundary
-days/weeks, so both heatmaps retain the same totals. Blank cells mean zero
+than 35 dates into Monday-based weeks. Calendar ranges include the partial current day/week, so both heatmaps retain the same totals. Blank cells mean zero
 recorded visits, which can also reflect downtime.
 
 Installation: add `mcb-mbbj/HABirdDashboard` as a custom HACS dashboard repository.
