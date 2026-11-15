@@ -63,6 +63,7 @@
   var fwTimezone = 'Europe/London', fwDateFormatter, fwFormatterZone, fwBucketMode = 'auto';
   var fwSite = AV_CFG.feeder || 'both', fwLevel = AV_CFG.confidence || 'strict';
   var fwLevels = ['strict','high','medium'];
+  var fwShortLabels = {strict:'Very high only',high:'Include High',medium:'Include Medium (may be wrong)'};
   var fwLabels = {strict:'Very high confidence',high:'Include high-confidence candidates',medium:'Include medium-confidence candidates — may be wrong'};
   function fwConfidence() {
     var h=AV_CFG.__getHass && AV_CFG.__getHass(), st=h && h.states && h.states[AV_CFG.confidenceEntity];
@@ -2922,6 +2923,7 @@
   }
   var rTimer;
   window.addEventListener('resize', function () {
+    fwLayoutControls();
     clearTimeout(rTimer);
     rTimer = setTimeout(function () {
       // (The activity heatmap reflows in pure CSS - no re-render needed.)
@@ -3708,7 +3710,8 @@
       var confidencePicker=document.getElementById('fieldwatchConfidence');
       if(confidencePicker)confidencePicker.value=fwConfidence();
       var note=document.getElementById('fieldwatchConfidenceNote');
-      if(note){note.textContent=fwConfidence()==='strict' ? '' : fwLabels[fwConfidence()]+'. Counts include these candidates.';note.hidden=fwConfidence()==='strict';}
+      if(note){note.textContent=fwConfidence()==='high' ? 'Includes candidates that failed strict checks.' : 'Includes medium candidates; some IDs may be wrong.';note.hidden=fwConfidence()==='strict';}
+      fwLayoutControls();
       Object.keys(SPECIES_CACHE || {}).forEach(function (k) { delete SPECIES_CACHE[k]; });
     }
     var forHours = currentHours, forKey = windowKey();
@@ -3763,6 +3766,11 @@
   // stream (below) only opens once this settles, so it never races the
   // very first render.
   var fwControls;
+  function fwLayoutControls() {
+    if (!fwControls) return;
+    var stage=document.querySelector('.stage');
+    if (stage) stage.style.top=(fwControls.offsetHeight+24)+'px';
+  }
   if (fwEnabled() && (AV_CFG.feederSelector !== false || AV_CFG.windowSelector === true || AV_CFG.confidenceSelector === true || fwConfidence() !== 'strict')) {
     fwControls = document.createElement('div'); fwControls.id = 'fieldwatchControls';
     document.body.appendChild(fwControls);
@@ -3805,7 +3813,7 @@
   if (fwEnabled() && AV_CFG.confidenceSelector === true) {
     var fwConfidencePicker=document.createElement('select');fwConfidencePicker.id='fieldwatchConfidence';
     fwConfidencePicker.setAttribute('aria-label','Identification confidence');
-    fwLevels.forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=fwLabels[k];fwConfidencePicker.appendChild(o);});
+    fwLevels.forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=fwShortLabels[k];fwConfidencePicker.appendChild(o);});
     fwConfidencePicker.value=fwConfidence();
     fwConfidencePicker.addEventListener('change',function(){
       var h=AV_CFG.__getHass && AV_CFG.__getHass();

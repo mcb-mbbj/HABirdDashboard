@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.7 — 2026-11-15 (Fieldwatch fork)
+
+- Reserve measured space for wrapped Fieldwatch controls so selectors and candidate labels never overlap the title or charts on narrow cards.
+- Use compact visible confidence labels while retaining descriptive editor and helper options.
+
 ## v1.10.6 — 2026-11-15 (Fieldwatch fork)
 
 - Add cumulative confidence selection to the card editor and optional in-card dropdown, with optional HA input_select binding.
