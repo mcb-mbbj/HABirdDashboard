@@ -2338,7 +2338,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
           if (fwLevels.indexOf(tier)<0 || fwLevels.indexOf(tier)>fwLevels.indexOf(level)) throw Error('Unexpected confidence tier');
           seen.add(r.id);
           events.push({t:r.observed_at*1000,sci:r.scientific_name,com:r.common_name,conf:null,
-            site:r.feeder_id,tier:tier,id:r.id,url:new URL('/share/'+encodeURIComponent(r.id)+'.html',base).href});
+            site:r.feeder_id,tier:tier,kind:r.kind || 'bird',id:r.id,url:new URL('/share/'+encodeURIComponent(r.id)+'.html',base).href});
         }); });
         return events.sort(function (a,b) { return a.t-b.t || a.id.localeCompare(b.id); });
       });
@@ -3387,7 +3387,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
     events.forEach(function (e) {
       if (e.t < sinceMs) return;
       var r = by[e.sci];
-      if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, n: 0, best_conf: 0, _f: e.t, _l: e.t };
+      if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, kind: e.kind || 'bird', n: 0, best_conf: 0, _f: e.t, _l: e.t };
       r.n++;
       if (e.conf > r.best_conf) r.best_conf = e.conf;
       if (e.t < r._f) r._f = e.t;
@@ -3424,7 +3424,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
         if (e.t < since) return;
         first = Math.min(first, e.t);
         var r = by[e.sci];
-        if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, n: 0, byHour: new Array(24).fill(0), byDate: {} };
+        if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, kind: e.kind || 'bird', n: 0, byHour: new Array(24).fill(0), byDate: {} };
         r.n++;
         var stamp = visual ? hhFmtTs(e.t) : '';
         r.byHour[visual ? +stamp.slice(11,13) : new Date(e.t).getHours()]++;
@@ -4464,6 +4464,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
 
   var _collageSig = null;
   function renderCollage(items, animate) {
+    if (fwEnabled()) items=items.filter(function(r){return r.kind!=='squirrel' && !/squirrel/i.test(r.com || '');});
     fitTitleOverlay();
     if (!items.length) {
       // Blank rather than an empty-state message when there's simply
@@ -8479,7 +8480,7 @@ function runHABirdApp(__root, __shell, __cardConfig, __imgBase) {
 // you copied the artwork locally (homeassistant/install.sh layout).
 var HABIRD_CDN_ASSETS = 'https://cdn.jsdelivr.net/gh/adamoberley/HABirdDashboard@3f3e2e78aa6537a58a51df05ac4b34dcdb118733/avian/assets/';
 
-var HABIRD_VERSION = '1.10.7';
+var HABIRD_VERSION = '1.10.9';
 
 var HABIRD_EDITOR_SCHEMA = [
   { name: 'dashboard', type: 'expandable', flatten: true, title: 'Dashboard', expanded: true, schema: [
