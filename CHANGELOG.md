@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.8 — 2026-11-22 (Fieldwatch fork)
+
+- Include Fieldwatch squirrel visits in confidence-filtered counts and hourly/daily heatmaps.
+- Keep squirrel entries out of collage artwork and the collage species-name strip.
+
 ## v1.10.7 — 2026-11-15 (Fieldwatch fork)
 
 - Reserve measured space for wrapped Fieldwatch controls so selectors and candidate labels never overlap the title or charts on narrow cards.

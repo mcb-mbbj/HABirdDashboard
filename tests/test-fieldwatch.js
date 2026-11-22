@@ -16,7 +16,7 @@ const event=(id,site,sci,com)=>({id,feeder_id:site,scientific_name:sci,common_na
 const data={
  [a]:{version:1,source:'fieldwatch',pages:[{feeder_id:'woodland',url:b},{feeder_id:'kitchen',url:c}]},
  [b]:[event('one','woodland','Cyanistes caeruleus','Blue tit'),event('two','woodland','Cyanistes caeruleus','Blue tit')],
- [c]:[event('three','kitchen','Erithacus rubecula','European robin')]
+ [c]:[event('three','kitchen','Erithacus rubecula','European robin'),{...event('squirrel','kitchen','Sciurus carolinensis','Eastern grey squirrel'),kind:'squirrel'}]
 };
 w.fetch=async url=>{
  requests.push(String(url));
@@ -27,7 +27,7 @@ w.fetch=async url=>{
 };
 w.eval(fs.readFileSync('dist/habird-card.js','utf8'));
 const card=w.document.createElement('habird-card');
-card.setConfig({data_source:'fieldwatch',fieldwatch_url:'https://fieldwatch.example/current.json',feeder:'both'});
+card.setConfig({data_source:'fieldwatch',fieldwatch_url:'https://fieldwatch.example/current.json',feeder:'both',names:'common'});
 card.hass={states:{},themes:{darkMode:false},callApi(){throw Error('No HA history should be queried');}};
 w.document.body.appendChild(card);
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
@@ -35,6 +35,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
  await wait(1200);
  const root=card.shadowRoot;
  assert.equal(root.querySelectorAll('.gtile').length,2,'visual-only birds join collage');
+ assert(!root.getElementById('nameStrip').textContent.includes('squirrel'),'squirrels excluded from collage names');
+ assert(root.getElementById('fieldwatchHourly').textContent.includes('Eastern grey squirrel'),'squirrels included in stats');
  const blue=root.querySelector('.gtile[data-sci="Cyanistes caeruleus"]');
  assert(blue.title.includes('2 visits'),blue.title);
  assert(!blue.title.includes('calls'));

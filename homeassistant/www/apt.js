@@ -147,7 +147,7 @@
           if (fwLevels.indexOf(tier)<0 || fwLevels.indexOf(tier)>fwLevels.indexOf(level)) throw Error('Unexpected confidence tier');
           seen.add(r.id);
           events.push({t:r.observed_at*1000,sci:r.scientific_name,com:r.common_name,conf:null,
-            site:r.feeder_id,tier:tier,id:r.id,url:new URL('/share/'+encodeURIComponent(r.id)+'.html',base).href});
+            site:r.feeder_id,tier:tier,kind:r.kind || 'bird',id:r.id,url:new URL('/share/'+encodeURIComponent(r.id)+'.html',base).href});
         }); });
         return events.sort(function (a,b) { return a.t-b.t || a.id.localeCompare(b.id); });
       });
@@ -1196,7 +1196,7 @@
     events.forEach(function (e) {
       if (e.t < sinceMs) return;
       var r = by[e.sci];
-      if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, n: 0, best_conf: 0, _f: e.t, _l: e.t };
+      if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, kind: e.kind || 'bird', n: 0, best_conf: 0, _f: e.t, _l: e.t };
       r.n++;
       if (e.conf > r.best_conf) r.best_conf = e.conf;
       if (e.t < r._f) r._f = e.t;
@@ -1233,7 +1233,7 @@
         if (e.t < since) return;
         first = Math.min(first, e.t);
         var r = by[e.sci];
-        if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, n: 0, byHour: new Array(24).fill(0), byDate: {} };
+        if (!r) r = by[e.sci] = { sci: e.sci, com: e.com, kind: e.kind || 'bird', n: 0, byHour: new Array(24).fill(0), byDate: {} };
         r.n++;
         var stamp = visual ? hhFmtTs(e.t) : '';
         r.byHour[visual ? +stamp.slice(11,13) : new Date(e.t).getHours()]++;
@@ -2273,6 +2273,7 @@
 
   var _collageSig = null;
   function renderCollage(items, animate) {
+    if (fwEnabled()) items=items.filter(function(r){return r.kind!=='squirrel' && !/squirrel/i.test(r.com || '');});
     fitTitleOverlay();
     if (!items.length) {
       // Blank rather than an empty-state message when there's simply
